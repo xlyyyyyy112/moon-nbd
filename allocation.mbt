@@ -131,10 +131,7 @@ async fn Client::block_status_request(
     }
     let data = self.tcp.read_exactly(len.reinterpret_as_int())
     if (kind & 0x8000U) != 0U {
-      if len < 6U || get32(data, 0) == 0U || get16(data, 4) > len - 6U {
-        raise Protocol("invalid block status error")
-      }
-      raise Server(get32(data, 0))
+      raise Server(structured_error_code(kind, data, offset, length))
     }
     if kind == 5U {
       if found ||

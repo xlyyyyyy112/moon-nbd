@@ -101,3 +101,27 @@ async test "structured read rejects incomplete success" {
     }
   })
 }
+
+///|
+test "structured error offsets and message framing are validated" {
+  let error : Array[Byte] = []
+  put32(error, 5U)
+  put16(error, 0U)
+  try structured_error_code(0x8002U, Bytes::from_array(error), 0UL, 16) catch {
+    Protocol(_) => ()
+    e => raise e
+  } noraise {
+    _ => fail("truncated error offset was accepted")
+  }
+  put64(error, 16UL)
+  try structured_error_code(0x8002U, Bytes::from_array(error), 0UL, 16) catch {
+    Protocol(_) => ()
+    e => raise e
+  } noraise {
+    _ => fail("out-of-range error offset was accepted")
+  }
+  assert_eq(
+    structured_error_code(0x8002U, Bytes::from_array(error), 16UL, 1),
+    5U,
+  )
+}

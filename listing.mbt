@@ -61,7 +61,10 @@ pub async fn inspect_export(
         send_option(tcp, 2U, b"")
         return result.unwrap()
       }
-      if kind == 3U && length >= 2U && get16(data, 0) == 0U {
+      if kind != 3U || length < 2U {
+        raise Protocol("unexpected export information reply")
+      }
+      if get16(data, 0) == 0U {
         if length != 12U || result is Some(_) {
           raise Protocol("invalid duplicate export information")
         }

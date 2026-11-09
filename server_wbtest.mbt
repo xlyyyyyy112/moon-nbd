@@ -152,3 +152,48 @@ test "export option distinguishes malformed and unknown names" {
   )
   assert_eq(validate_export_option(b"\x00", disk), Some(0x80000003U))
 }
+
+///|
+async test "metadata context is not reused for a different export alias" {
+  let disk = MemoryExport::new(512, name=b"named")
+  let listener = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+  defer listener.close()
+  @async.with_timeout(5000, () => {
+    @async.with_task_group() <| group => {
+      group.spawn_bg() <| () => {
+        let (tcp, _) = listener.accept()
+        defer tcp.close()
+        disk.serve_connection(tcp)
+      }
+      let tcp = @socket.Tcp::connect_to_host(
+        "127.0.0.1",
+        port=listener.addr.port(),
+      )
+      defer tcp.close()
+      let no_zeroes = client_handshake(tcp)
+      negotiate_structured(tcp)
+      let context = negotiate_allocation(tcp, b"named")
+      let info = negotiate_go(tcp, b"", no_zeroes)
+      let client : Client = {
+        tcp,
+        size: info.size,
+        flags: info.flags,
+        min_block: info.min_block,
+        max_block: info.max_block,
+        structured: true,
+        allocation_context: Some(context),
+        timeout_ms: 1000,
+        cookie: 0UL,
+        busy: false,
+        closed: false,
+      }
+      try client.block_status_request(context, 0UL, 512) catch {
+        Server(22U) => ()
+        e => raise e
+      } noraise {
+        _ => fail("metadata selected for another alias was accepted")
+      }
+      client.disconnect()
+    }
+  })
+}

@@ -111,14 +111,15 @@ async fn negotiate_go(
         if min == 0U ||
           (min & (min - 1U)) != 0U ||
           preferred < min ||
+          preferred < 512U ||
           (preferred & (preferred - 1U)) != 0U ||
           max < preferred ||
-          min > 16777216U ||
-          max % min != 0U {
+          min > 65536U {
           raise Protocol("invalid server block constraints")
         }
         minimum = min
-        maximum = if max < 16777216U { max } else { 16777216U }
+        let capped = if max < 16777216U { max } else { 16777216U }
+        maximum = capped - capped % min
         got_block = true
       }
       _ => ()

@@ -108,3 +108,34 @@ async test "GO rejects invalid advertised block sizes" {
     },
   )
 }
+
+///|
+async test "GO accepts an unlimited maximum and rounds odd maxima down" {
+  for advertised_max in [0xffffffffU, 32769U] {
+    negotiation_peer(
+      tcp => {
+        send_test_export(tcp)
+        let block : Array[Byte] = []
+        put16(block, 3U)
+        put32(block, 512U)
+        put32(block, 4096U)
+        put32(block, advertised_max)
+        option_reply(tcp, 7U, 3U, Bytes::from_array(block))
+        option_reply(tcp, 7U, 1U, b"")
+      },
+      port => {
+        let client = Client::connect("127.0.0.1", port, b"")
+        defer client.close()
+        assert_eq(client.min_block, 512U)
+        assert_eq(
+          client.max_block,
+          if advertised_max == 0xffffffffU {
+            16777216U
+          } else {
+            32768U
+          },
+        )
+      },
+    )
+  }
+}

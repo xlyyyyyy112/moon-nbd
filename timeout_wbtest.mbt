@@ -80,3 +80,34 @@ async test "wrong write cookie reports unknown outcome" {
     },
   )
 }
+
+///|
+async test "one read timeout covers both header and payload" {
+  negotiation_peer(
+    tcp => {
+      send_test_export(tcp)
+      option_reply(tcp, 7U, 1U, b"")
+      let request = tcp.read_exactly(28)
+      @async.sleep(250)
+      let reply : Array[Byte] = []
+      put32(reply, 0x67446698U)
+      put32(reply, 0U)
+      put64(reply, get64(request, 8))
+      tcp.write(Bytes::from_array(reply))
+      @async.sleep(250)
+      tcp.write(b"x") catch {
+        _ => ()
+      }
+    },
+    port => {
+      let client = Client::connect("127.0.0.1", port, b"", timeout_ms=400)
+      defer client.close()
+      try client.read_at(0UL, 1) catch {
+        @async.TimeoutError => ()
+        e => raise e
+      } noraise {
+        _ => fail("read exceeded its overall request timeout")
+      }
+    },
+  )
+}

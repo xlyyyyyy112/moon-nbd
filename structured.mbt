@@ -24,6 +24,8 @@ async fn structured_command(
   tcp : @socket.Tcp,
   header : Bytes,
   cookie : UInt64,
+  offset : UInt64,
+  length : Int32,
 ) -> Bytes {
   if get64(header, 8) != cookie {
     raise Protocol("structured cookie mismatch")
@@ -31,15 +33,12 @@ async fn structured_command(
   let flags = get16(header, 4)
   let kind = get16(header, 6)
   let len = get32(tcp.read_exactly(4), 0)
-  if len > 4102U {
+  if len > 4110U {
     raise Protocol("structured command payload too large")
   }
   let body = tcp.read_exactly(len.reinterpret_as_int())
   if (kind & 0x8000U) != 0U {
-    if len < 6U || get32(body, 0) == 0U || get16(body, 4) > len - 6U {
-      raise Protocol("invalid structured error")
-    }
-    raise Server(get32(body, 0))
+    raise Server(structured_error_code(kind, body, offset, length))
   }
   if kind != 0U || len != 0U || (flags & 1U) == 0U {
     raise Protocol("invalid structured command reply")
@@ -67,18 +66,12 @@ async fn read_structured(
     let flags = get16(header, 4)
     let kind = get16(header, 6)
     let payload_len = get32(tcp.read_exactly(4), 0)
-    if payload_len > length.reinterpret_as_uint() + 8U && payload_len > 4102U {
+    if payload_len > length.reinterpret_as_uint() + 8U && payload_len > 4110U {
       raise Protocol("structured payload exceeds request")
     }
     let body = tcp.read_exactly(payload_len.reinterpret_as_int())
     if (kind & 0x8000U) != 0U {
-      if payload_len < 6U ||
-        get32(body, 0) == 0U ||
-        get16(body, 4) > 4096U ||
-        get16(body, 4) > payload_len - 6U {
-        raise Protocol("invalid structured error")
-      }
-      raise Server(get32(body, 0))
+      raise Server(structured_error_code(kind, body, start, length))
     }
     match kind {
       0U =>
@@ -122,4 +115,28 @@ async fn read_structured(
     header = tcp.read_exactly(16)
   }
   raise Protocol("too many structured chunks")
+}
+
+///|
+fn structured_error_code(
+  kind : UInt32,
+  body : Bytes,
+  start : UInt64,
+  length : Int32,
+) -> UInt32 raise {
+  let fixed = if kind == 0x8002U { 14 } else { 6 }
+  if body.length() < fixed || get32(body, 0) == 0U {
+    raise Protocol("invalid structured error")
+  }
+  let message_length = get16(body, 4).reinterpret_as_int()
+  if message_length > 4096 || message_length > body.length() - fixed {
+    raise Protocol("invalid structured error message length")
+  }
+  if kind == 0x8002U {
+    let offset = get64(body, 6 + message_length)
+    if length <= 0 || offset < start || offset - start >= length.to_uint64() {
+      raise Protocol("structured error offset outside request")
+    }
+  }
+  get32(body, 0)
 }

@@ -123,6 +123,7 @@ async fn ExportBackend::serve_export(
   }
   let mut structured = false
   let mut allocation = false
+  let mut allocation_name : Bytes? = None
   // Limit negotiation payloads so an untrusted peer cannot allocate arbitrarily.
   while true {
     let header = tcp.read_exactly(16)
@@ -140,6 +141,7 @@ async fn ExportBackend::serve_export(
         if !self.matches_name(body) {
           raise Protocol("unknown export")
         }
+        allocation = allocation && allocation_name == Some(body)
         let info : Array[Byte] = []
         put64(info, self.size())
         put16(info, self.flags())
@@ -152,6 +154,10 @@ async fn ExportBackend::serve_export(
         break
       }
       2U => {
+        if body.length() != 0 {
+          option_reply(tcp, option, 0x80000003U, b"")
+          continue
+        }
         option_reply(tcp, option, 1U, b"")
         return
       }
@@ -174,6 +180,9 @@ async fn ExportBackend::serve_export(
           None => {
             export_info(tcp, option, self)
             if option == 7U {
+              let name_len = get32(body, 0).reinterpret_as_int()
+              allocation = allocation &&
+                allocation_name == Some(body[4:4 + name_len].to_owned())
               break
             }
           }
@@ -187,6 +196,7 @@ async fn ExportBackend::serve_export(
         }
       10U => {
         allocation = false
+        allocation_name = None
         if !structured {
           option_reply(tcp, option, 0x80000003U, b"")
         } else {
@@ -201,6 +211,8 @@ async fn ExportBackend::serve_export(
                 }
                 option_reply(tcp, option, 4U, Bytes::from_array(selected))
                 allocation = true
+                let name_len = get32(body, 0).reinterpret_as_int()
+                allocation_name = Some(body[4:4 + name_len].to_owned())
               }
               option_reply(tcp, option, 1U, b"")
             }

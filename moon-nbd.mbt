@@ -260,6 +260,22 @@ async fn Client::request(
     self.busy = false
   }
   errdefer self.close()
+  @async.with_timeout(self.timeout_ms, () => {
+    self.request_exchange(command, request_flags, offset, length, payload)
+  }) catch {
+    e => raise request_error(e, command)
+  }
+}
+
+///|
+async fn Client::request_exchange(
+  self : Client,
+  command : UInt32,
+  request_flags : UInt32,
+  offset : UInt64,
+  length : Int32,
+  payload : Bytes,
+) -> Bytes {
   self.cookie += 1UL
   let req : Array[Byte] = []
   put32(req, 0x25609513U)
@@ -268,26 +284,16 @@ async fn Client::request(
   put64(req, self.cookie)
   put64(req, offset)
   put32(req, length.reinterpret_as_uint())
-  let header = @async.with_timeout(self.timeout_ms, () => {
-    self.tcp.write(Bytes::from_array(req))
-    if command == 1U {
-      self.tcp.write(payload)
-    }
-    self.tcp.read_exactly(16)
-  }) catch {
-    e => raise request_error(e, command)
+  self.tcp.write(Bytes::from_array(req))
+  if command == 1U {
+    self.tcp.write(payload)
   }
+  let header = self.tcp.read_exactly(16)
   if self.structured && command == 0U {
-    return @async.with_timeout(self.timeout_ms, () => {
-      read_structured(self.tcp, header, self.cookie, offset, length)
-    })
+    return read_structured(self.tcp, header, self.cookie, offset, length)
   }
   if self.structured && get32(header, 0) == 0x668e33efU {
-    return @async.with_timeout(self.timeout_ms, () => {
-      structured_command(self.tcp, header, self.cookie)
-    }) catch {
-      e => raise request_error(e, command)
-    }
+    return structured_command(self.tcp, header, self.cookie, offset, length)
   }
   if get32(header, 0) != 0x67446698U || get64(header, 8) != self.cookie {
     if command == 1U || command == 3U || command == 4U || command == 6U {
@@ -300,7 +306,7 @@ async fn Client::request(
     raise Server(error)
   }
   if command == 0U {
-    @async.with_timeout(self.timeout_ms, () => self.tcp.read_exactly(length))
+    self.tcp.read_exactly(length)
   } else {
     b""
   }
