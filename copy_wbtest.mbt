@@ -192,9 +192,10 @@ async test "file import and byte comparison round trip through a remote export" 
       }
       let client = Client::connect("127.0.0.1", listener.addr.port(), b"")
       defer client.close()
-      assert_eq(client.read_bytes(5UL, 13), Bytes::from_array(source[5:18]))
+      assert_eq(client.read_bytes(5UL, 13), Bytes::make(13, b'\x00'))
       assert_eq(client.read_bytes(1024UL, 0), b"")
       assert_eq(client.copy_from_file(file), 1024UL)
+      assert_eq(client.read_bytes(5UL, 13), Bytes::from_array(source[5:18]))
       let initial = client.compare_file(file, 0UL, 1024UL)
       assert_eq(initial.bytes_checked, 1024UL)
       assert_eq(initial.differences.length(), 0)
