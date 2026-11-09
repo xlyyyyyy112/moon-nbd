@@ -66,16 +66,17 @@ pub async fn ClientConfig::read_at_retry(
   }
   let mut attempt = 0
   while true {
-    let client = self.connect()
     let result = try {
+      let client = self.connect()
+      defer client.close()
       let data = client.read_at(offset, length)
-      client.disconnect()
+      // The read has succeeded. A failed disconnect must not trigger a repeat.
+      client.disconnect() catch {
+        _ => ()
+      }
       Ok(data)
     } catch {
-      error => {
-        client.close()
-        Err(error)
-      }
+      error => Err(error)
     }
     match result {
       Ok(data) => return data

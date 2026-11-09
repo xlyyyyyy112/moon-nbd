@@ -47,3 +47,23 @@ test "client configuration rejects unsafe retry settings" {
     _ => fail("allocation without structured replies was accepted")
   }
 }
+
+///|
+async test "read retry covers connection setup failures" {
+  let disk = MemoryExport::new(512)
+  let listener = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+  defer listener.close()
+  @async.with_timeout(5000, () => {
+    @async.with_task_group() <| group => {
+      group.spawn_bg() <| () => {
+        let (first, _) = listener.accept()
+        first.close()
+        let (second, _) = listener.accept()
+        defer second.close()
+        disk.serve_connection(second)
+      }
+      let config = ClientConfig::new("127.0.0.1", listener.addr.port(), b"")
+      assert_eq(config.read_at_retry(0UL, 1), b"\x00")
+    }
+  })
+}

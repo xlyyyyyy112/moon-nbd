@@ -15,12 +15,11 @@ async test "cached client records hits and invalidates modified blocks" {
         listener.addr.port(),
         b"",
         1024,
-        line_size=512,
         structured=true,
       )
       defer cache.close()
       assert_eq(cache.size(), 4096UL)
-      assert_eq(cache.line_size(), 512U)
+      assert_eq(cache.line_size(), 1024U)
       assert_eq(cache.read_at(0UL, 512), Bytes::make(512, b'\x00'))
       let first = cache.stats()
       assert_eq(first.hits, 0UL)
@@ -36,6 +35,12 @@ async test "cached client records hits and invalidates modified blocks" {
       let third = cache.stats()
       assert_eq(third.misses, 2UL)
       cache.disconnect()
+      try cache.read_at(0UL, 512) catch {
+        InvalidArgument(_) => ()
+        e => raise e
+      } noraise {
+        _ => fail("closed cache returned a stale hit")
+      }
     }
   })
 }
@@ -69,6 +74,10 @@ async test "cached client evicts least recently used line within its budget" {
       assert_eq(stats.hits, 1UL)
       assert_eq(stats.misses, 3UL)
       assert_eq(stats.evictions, 1UL)
+      ignore(cache.read_at(0UL, 512))
+      assert_eq(cache.stats().hits, 2UL)
+      ignore(cache.read_at(512UL, 512))
+      assert_eq(cache.stats().misses, 4UL)
       cache.disconnect()
     }
   })

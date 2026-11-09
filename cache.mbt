@@ -63,13 +63,20 @@ pub async fn CachedClient::connect(
     1048576U
   }
   let requested = if line_size == 0 {
-    preferred
+    if preferred < cache_bytes.reinterpret_as_uint() {
+      preferred
+    } else {
+      cache_bytes.reinterpret_as_uint()
+    }
   } else {
     line_size.reinterpret_as_uint()
   }
   let minimum = client.min_block
   let actual = requested - requested % minimum
-  if actual == 0U || actual > client.max_block || actual < minimum {
+  if actual == 0U ||
+    actual > client.max_block ||
+    actual < minimum ||
+    (line_size != 0 && actual != requested) {
     raise InvalidArgument("cache line violates server block constraints")
   }
   let lines = cache_bytes.reinterpret_as_uint() / actual
@@ -111,20 +118,12 @@ pub fn CachedClient::stats(self : CachedClient) -> CacheStats {
 ///|
 fn CachedClient::next_tick(self : CachedClient) -> UInt64 {
   self.clock += 1UL
-  // A wraparound is practically unreachable, but resetting stamps preserves
-  // correct LRU ordering instead of making a newly read line look oldest.
+  // Drop old lines when the clock wraps rather than inventing an LRU order.
   if self.clock == 0UL {
-    let mut tick = 1UL
     for i in 0..<self.slots.length() {
-      match self.slots[i] {
-        Some(line) => {
-          self.slots[i] = Some({ ..line, used_at: tick, })
-          tick += 1UL
-        }
-        None => ()
-      }
+      self.slots[i] = None
     }
-    self.clock = tick
+    self.clock = 1UL
   }
   self.clock
 }
@@ -191,7 +190,9 @@ pub async fn CachedClient::read_at(
   offset : UInt64,
   length : Int32,
 ) -> Bytes {
-  if length <= 0 ||
+  if self.client.closed ||
+    self.client.busy ||
+    length <= 0 ||
     length.reinterpret_as_uint() > self.client.max_block ||
     offset > self.client.size ||
     length.to_uint64() > self.client.size - offset ||
@@ -225,12 +226,12 @@ fn CachedClient::invalidate(
   offset : UInt64,
   length : UInt64,
 ) -> Unit {
-  let end = offset + length
   for i in 0..<self.slots.length() {
     match self.slots[i] {
       Some(line) => {
         let line_end = line.offset + line.data.length().to_uint64()
-        if line.offset < end && offset < line_end {
+        if offset < line_end &&
+          (line.offset <= offset || line.offset - offset < length) {
           self.slots[i] = None
         }
       }
