@@ -53,6 +53,8 @@ disk.disconnect()
 
 `create_integrity_manifest` 可为稳定导出生成分块 CRC32 清单；`verify_integrity_manifest` 会重新读取并给出精确的不一致块。清单可用 `IntegrityManifest::encode` 保存、用 `decode` 恢复。CRC32 用于检测意外损坏，并不提供签名或抗篡改保证。
 
+`RangeSet` 提供经过排序、合并和对齐验证的半开区间集合，可进行并集、交集和差集。`Client::range_set` 会进一步检查区间是否落在当前导出内，适合为局部校验、复制和差分任务生成安全计划。
+
 ## 命令行
 
 以下命令在仓库根目录执行：
