@@ -31,6 +31,14 @@ pub(all) struct AllocationExtent {
 pub fn AllocationExtent::is_hole(Self) -> Bool
 pub fn AllocationExtent::is_zero(Self) -> Bool
 
+pub(all) struct ByteRange {
+  offset : UInt64
+  length : UInt64
+}
+pub fn ByteRange::contains(Self, UInt64) -> Bool
+pub fn ByteRange::end(Self) -> UInt64 raise
+pub fn ByteRange::intersects(Self, Self) -> Bool
+
 pub(all) struct CacheStats {
   hits : UInt64
   misses : UInt64
@@ -77,6 +85,7 @@ pub async fn Client::copy_to_file(Self, @fs.File) -> UInt64
 pub async fn Client::create_integrity_manifest(Self, Int32, max_chunks? : Int32) -> IntegrityManifest
 pub async fn Client::disconnect(Self) -> Unit
 pub async fn Client::flush(Self) -> Unit
+pub fn Client::range_set(Self, Array[ByteRange]) -> RangeSet raise
 pub async fn Client::read_at(Self, UInt64, Int32) -> Bytes
 pub async fn Client::scan_allocation(Self, UInt64, UInt64, max_extents? : Int32) -> Array[AllocationExtent]
 pub async fn Client::trim(Self, UInt64, Int32) -> Unit
@@ -129,6 +138,19 @@ pub fn MemoryExport::new(Int32, read_only? : Bool, name? : Bytes) -> Self raise
 pub async fn MemoryExport::serve_connection(Self, @socket.Tcp) -> Unit
 pub fn MemoryExport::size(Self) -> UInt64
 pub fn MemoryExport::snapshot(Self) -> Bytes
+
+pub struct RangeSet {
+  // private fields
+}
+pub fn RangeSet::alignment(Self) -> UInt64
+pub fn RangeSet::contains(Self, UInt64) -> Bool
+pub fn RangeSet::intersection(Self, Self) -> Self raise
+pub fn RangeSet::is_empty(Self) -> Bool
+pub fn RangeSet::new(Array[ByteRange], alignment? : UInt64, max_ranges? : Int32) -> Self raise
+pub fn RangeSet::ranges(Self) -> Array[ByteRange]
+pub fn RangeSet::subtract(Self, Self) -> Self raise
+pub fn RangeSet::total_length(Self) -> UInt64
+pub fn RangeSet::union(Self, Self) -> Self raise
 
 pub(all) struct RemoteExportInfo {
   size : UInt64
