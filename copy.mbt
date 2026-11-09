@@ -56,10 +56,13 @@ pub async fn Client::copy_ranges_to_file(
   }
   let mut copied = 0UL
   let source_ranges = ranges.ranges()
+  // Validate the entire plan before the first destination write.
   for range in source_ranges {
     if range.offset > self.size || range.length > self.size - range.offset {
       raise InvalidArgument("range copy is outside export")
     }
+  }
+  for range in source_ranges {
     let end = range.offset + range.length
     let mut offset = range.offset
     while offset < end {
@@ -99,19 +102,36 @@ pub async fn copy_differences_to_file(
     length,
     max_ranges~,
   )
-  let requested : Array[ByteRange] = []
-  for difference in differences {
-    requested.push({ offset: difference.offset, length: difference.length, })
-  }
+  let requested = aligned_differences(differences, source.min_block.to_uint64())
   let ranges = source.range_set(requested)
   source.copy_ranges_to_file(file, ranges)
 }
 
 ///|
+fn aligned_differences(
+  differences : Array[Difference],
+  block : UInt64,
+) -> Array[ByteRange] {
+  let ranges : Array[ByteRange] = []
+  for difference in differences {
+    let start = difference.offset - difference.offset % block
+    let end = difference.offset + difference.length
+    let remainder = end % block
+    let aligned_end = if remainder == 0UL {
+      end
+    } else {
+      end + block - remainder
+    }
+    ranges.push({ offset: start, length: aligned_end - start, })
+  }
+  ranges
+}
+
+///|
 /// Summary of a completed sparse export.
 ///
-/// `data_bytes` is the number of bytes read from the server and written to the
-/// target. `zero_bytes` was omitted only when the server explicitly described
+/// `data_bytes` is the number of source bytes written to the target. Aligned
+/// reads may transfer more bytes. `zero_bytes` was omitted only when the server explicitly described
 /// it as reading as zero; a hole alone is deliberately not enough to omit it.
 pub(all) struct SparseCopyStats {
   logical_bytes : UInt64
@@ -187,6 +207,9 @@ pub async fn Client::copy_sparse_to_file(
     raise InvalidArgument(
       "sparse copy requires a negotiated allocation context",
     )
+  }
+  if max_extents <= 0 || max_extents > 1048576 {
+    raise InvalidArgument("invalid sparse copy extent limit")
   }
   if self.size > 0x7fffffffffffffffUL ||
     self.size % self.min_block.to_uint64() != 0UL {

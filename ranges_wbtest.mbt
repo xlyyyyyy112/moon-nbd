@@ -51,3 +51,14 @@ test "range set rejects empty, misaligned and mismatched inputs" {
     _ => fail("mismatched alignments were accepted")
   }
 }
+
+///|
+test "range overlap handles UInt64 boundaries without wrapping" {
+  let invalid : ByteRange = { offset: 0xfffffffffffffffeUL, length: 4UL, }
+  let high : ByteRange = { offset: 0xfffffffffffffffcUL, length: 2UL, }
+  let low : ByteRange = { offset: 0UL, length: 4UL, }
+  assert_false(invalid.intersects(high))
+  assert_false(invalid.intersects(low))
+  assert_true(high.intersects({ offset: 0xfffffffffffffffdUL, length: 1UL, }))
+  assert_false(high.intersects({ offset: 0xfffffffffffffffeUL, length: 1UL, }))
+}

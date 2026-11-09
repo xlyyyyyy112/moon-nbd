@@ -27,10 +27,13 @@ pub fn ByteRange::contains(self : ByteRange, offset : UInt64) -> Bool {
 
 ///|
 pub fn ByteRange::intersects(self : ByteRange, other : ByteRange) -> Bool {
-  if self.length == 0UL || other.length == 0UL {
+  if self.length == 0UL ||
+    other.length == 0UL ||
+    self.offset > 0xffffffffffffffffUL - self.length ||
+    other.offset > 0xffffffffffffffffUL - other.length {
     return false
   }
-  // Subtraction avoids overflowing either end for invalid caller-provided data.
+  // Reject invalid caller-provided ranges before adding either end.
   self.offset < other.offset + other.length &&
   other.offset < self.offset + self.length
 }
