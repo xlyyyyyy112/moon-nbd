@@ -109,3 +109,37 @@ async test "sparse copy requires negotiated allocation metadata" {
   @fs.remove(path[:])
   @fs.rmdir(dir[:])
 }
+
+///|
+async test "range copy updates only requested bytes in an existing image" {
+  let dir = @fs.tmpdir(prefix="moon-nbd-range-copy")
+  let path = "\{dir}/target.raw"
+  let file = @fs.open(path[:], mode=ReadWrite, create_mode=CreateNew)
+  let disk = MemoryExport::new(1024)
+  let listener = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+  defer listener.close()
+  @async.with_timeout(5000, () => {
+    @async.with_task_group() <| group => {
+      group.spawn_bg() <| () => {
+        let (tcp, _) = listener.accept()
+        defer tcp.close()
+        disk.serve_connection(tcp)
+      }
+      // Establish the logical target size and seed a byte outside the update.
+      file.write_at(b"K", position=1023L)
+      let client = Client::connect("127.0.0.1", listener.addr.port(), b"")
+      defer client.close()
+      client.write_at(512UL, b"incremental")
+      let ranges = client.range_set([{ offset: 512UL, length: 11UL, }])
+      let stats = client.copy_ranges_to_file(file, ranges)
+      assert_eq(stats.ranges, 1)
+      assert_eq(stats.bytes, 11UL)
+      assert_eq(file.read_exactly_at(11, position=512L), b"incremental")
+      assert_eq(file.read_exactly_at(1, position=1023L), b"K")
+      client.disconnect()
+    }
+  })
+  file.close()
+  @fs.remove(path[:])
+  @fs.rmdir(dir[:])
+}

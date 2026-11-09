@@ -28,6 +28,86 @@ pub async fn Client::copy_to_file(self : Client, file : @fs.File) -> UInt64 {
 }
 
 ///|
+/// Result of copying an explicit set of source ranges to an existing image.
+pub(all) struct RangeCopyStats {
+  ranges : Int32
+  bytes : UInt64
+}
+
+///|
+/// Copy selected ranges into an existing same-size regular file.
+///
+/// Unlike `copy_to_file`, this operation intentionally preserves every byte
+/// outside `ranges`; it is suitable for updating a previously created image.
+/// The caller must ensure that the destination represents the desired baseline
+/// and that the remote export is stable throughout the copy.
+pub async fn Client::copy_ranges_to_file(
+  self : Client,
+  file : @fs.File,
+  ranges : RangeSet,
+) -> RangeCopyStats {
+  if file.kind() != Regular ||
+    file.size() < 0L ||
+    file.size().reinterpret_as_uint64() != self.size {
+    raise InvalidArgument("range copy target must be a same-size regular file")
+  }
+  if ranges.alignment() != self.min_block.to_uint64() {
+    raise InvalidArgument("range copy alignment differs from export block size")
+  }
+  let mut copied = 0UL
+  let source_ranges = ranges.ranges()
+  for range in source_ranges {
+    if range.offset > self.size || range.length > self.size - range.offset {
+      raise InvalidArgument("range copy is outside export")
+    }
+    let end = range.offset + range.length
+    let mut offset = range.offset
+    while offset < end {
+      let remaining = end - offset
+      let length = if remaining < self.max_block.to_uint64() {
+        remaining.to_int()
+      } else {
+        self.max_block.reinterpret_as_int()
+      }
+      let data = self.read_at(offset, length)
+      file.write_at(data[:], position=offset.reinterpret_as_int64())
+      copied += data.length().to_uint64()
+      offset += data.length().to_uint64()
+    }
+  }
+  file.sync()
+  { ranges: source_ranges.length(), bytes: copied, }
+}
+
+///|
+/// Compare two stable NBD exports and update only differing bytes in a local
+/// same-size image. `source` supplies replacement data while `baseline` is
+/// read only for comparison; all three artefacts must remain stable during the
+/// operation.
+pub async fn copy_differences_to_file(
+  source : Client,
+  baseline : Client,
+  file : @fs.File,
+  offset : UInt64,
+  length : UInt64,
+  max_ranges~ : Int32 = 16384,
+) -> RangeCopyStats {
+  let differences = compare_ranges(
+    source,
+    baseline,
+    offset,
+    length,
+    max_ranges~,
+  )
+  let requested : Array[ByteRange] = []
+  for difference in differences {
+    requested.push({ offset: difference.offset, length: difference.length, })
+  }
+  let ranges = source.range_set(requested)
+  source.copy_ranges_to_file(file, ranges)
+}
+
+///|
 /// Summary of a completed sparse export.
 ///
 /// `data_bytes` is the number of bytes read from the server and written to the

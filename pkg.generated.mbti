@@ -9,6 +9,8 @@ import {
 // Values
 pub async fn compare_ranges(Client, Client, UInt64, UInt64, max_ranges? : Int32) -> Array[Difference]
 
+pub async fn copy_differences_to_file(Client, Client, @fs.File, UInt64, UInt64, max_ranges? : Int32) -> RangeCopyStats
+
 pub async fn inspect_export(String, Int32, Bytes, timeout_ms? : Int32) -> RemoteExportInfo
 
 pub async fn list_exports(String, Int32, timeout_ms? : Int32) -> Array[ExportEntry]
@@ -80,6 +82,7 @@ pub async fn Client::block_status(Self, UInt64, Int32) -> Array[AllocationExtent
 pub async fn Client::cache(Self, UInt64, Int32) -> Unit
 pub fn Client::close(Self) -> Unit
 pub async fn Client::connect(String, Int32, Bytes, structured? : Bool, allocation? : Bool, timeout_ms? : Int32) -> Self
+pub async fn Client::copy_ranges_to_file(Self, @fs.File, RangeSet) -> RangeCopyStats
 pub async fn Client::copy_sparse_to_file(Self, @fs.File, max_extents? : Int32) -> SparseCopyStats
 pub async fn Client::copy_to_file(Self, @fs.File) -> UInt64
 pub async fn Client::create_integrity_manifest(Self, Int32, max_chunks? : Int32) -> IntegrityManifest
@@ -138,6 +141,11 @@ pub fn MemoryExport::new(Int32, read_only? : Bool, name? : Bytes) -> Self raise
 pub async fn MemoryExport::serve_connection(Self, @socket.Tcp) -> Unit
 pub fn MemoryExport::size(Self) -> UInt64
 pub fn MemoryExport::snapshot(Self) -> Bytes
+
+pub(all) struct RangeCopyStats {
+  ranges : Int32
+  bytes : UInt64
+}
 
 pub struct RangeSet {
   // private fields
