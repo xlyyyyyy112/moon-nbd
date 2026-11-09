@@ -206,6 +206,7 @@ async test "file import and byte comparison round trip through a remote export" 
       assert_eq(changed.differences[0].offset, 513UL)
       assert_eq(changed.differences[0].length, 1UL)
       assert_eq(client.copy_differences_from_file(file, 500UL, 24UL), 1UL)
+      source[513] = b'X'
       assert_eq(disk.snapshot(), Bytes::from_array(source))
       client.disconnect()
     }
