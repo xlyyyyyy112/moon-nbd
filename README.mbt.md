@@ -1,18 +1,14 @@
 # MoonNBD
 
-MoonNBD 是开发中的 MoonBit 网络块设备客户端与服务端。它通过 NBD 协议访问远端块设备，也可以把内存或本地普通文件作为块设备导出。协议实现使用 MoonBit 和 `moonbitlang/async`，可以与 QEMU 互通。
+[![持续集成](https://github.com/xlyyyyyy112/moon-nbd/actions/workflows/ci.yml/badge.svg)](https://github.com/xlyyyyyy112/moon-nbd/actions/workflows/ci.yml)
 
-## 当前状态
+MoonNBD 是用 MoonBit 编写的网络块设备（NBD）客户端与服务端。客户端可以访问远端镜像、读取和修改数据、复制镜像、比较差异及检查数据完整性；服务端可以将内存或本地普通文件作为镜像导出，并与 QEMU 互通。
 
-此项目仍在开发，尚未发布到 Mooncakes。当前支持 native 后端和 TCP；客户端与每个服务端导出同时只处理一个请求或连接。客户端支持选择命名导出、列表查询、无副作用的 `NBD_OPT_INFO` 探测、`NBD_OPT_GO`（不支持时回退）、大小约束、结构化读取、`base:allocation`、读写、刷盘、TRIM、写零和主动断开。服务端支持单个默认或命名导出、结构化读取与基础块状态，内存和文件后端均可用。
+项目仍在开发，尚未发布到 Mooncakes。当前支持 native 后端和 TCP，每条连接一次只处理一个请求。项目不支持 TLS、身份认证、同一连接上的并发请求或旧式握手。命令行服务端只监听 `127.0.0.1`，不应直接暴露在不可信网络中。
 
-暂不支持 TLS、身份认证、同一连接多请求在途、自动重连、旧式握手或完整 NBD 扩展。CLI 服务端只监听 `127.0.0.1`；库使用者应限制网络访问。块状态如果无法判断是否为洞或零，服务端会保守地返回未标记状态，不代表已经确认物理分配。
+## 环境准备
 
-写操作、刷盘、TRIM 和写零若发送后连接中断，返回 `OutcomeUnknown`：服务器可能已执行操作，调用方需要自行确认结果，不能盲目重试。即使收到服务端写入错误，也不能假设底层文件完全未修改。文件服务需由调用方保证后端文件的大小和内容不被其他程序并发修改；内存后端是易失性的。
-
-## 本地检查
-
-使用 MoonBit 0.10.18 或兼容版本、C 编译器及 `moonbitlang/async`：
+需要 MoonBit 0.10.18 或兼容版本、C 编译器，以及 `moonbitlang/async` 依赖。克隆仓库后，在项目根目录执行：
 
 ```sh
 moon update
@@ -20,9 +16,100 @@ moon check --target native --deny-warn
 moon test --target native --deny-warn
 ```
 
-## QEMU 联调
+构建命令行程序：
 
-在 Linux 或 WSL 安装 `qemu-utils`，依次运行：
+```sh
+moon build --target native cmd/nbd
+```
+
+## 端到端使用流程
+
+下面以本地文件镜像为例，展示创建镜像、启动服务、查询信息、导出和比对的完整过程。先在 Linux 或 WSL 安装 QEMU 工具，并在仓库根目录打开两个终端。
+
+在终端一创建一个新的 16 MiB 镜像，然后启动只读服务端：
+
+```sh
+qemu-img create -f raw demo.raw 16M
+moon run --target native cmd/nbd -- serve demo.raw 11091
+```
+
+服务端会保持运行并监听本机 `127.0.0.1:11091`。该示例以只读方式导出文件。
+
+在终端二查询导出信息，再将镜像完整导出到一个新文件：
+
+```sh
+moon run --target native cmd/nbd -- info 127.0.0.1 11091
+moon run --target native cmd/nbd -- export 127.0.0.1 11091 backup.raw
+qemu-img compare demo.raw backup.raw
+```
+
+`info` 显示镜像大小和能力。导出命令使用独占创建，不会覆盖已有的 `backup.raw`；导出过程中失败时可能留下不完整文件。比对命令成功退出表示两个镜像内容一致。完成后在终端一按 `Ctrl+C` 停止服务端。
+
+若确实要允许客户端写入文件镜像，启动时必须明确加上 `--write`：
+
+```sh
+moon run --target native cmd/nbd -- serve demo.raw 11091 --write
+```
+
+写入、刷盘、TRIM 或写零请求发送后若连接中断，客户端会报告 `OutcomeUnknown`。服务端可能已经执行该操作，调用方应先检查数据，再决定后续处理，不要盲目重试。
+
+## 命令行参考
+
+命令均在仓库根目录执行：
+
+```sh
+# 列出服务端导出
+moon run --target native cmd/nbd -- list 127.0.0.1 10809
+
+# 查询默认导出信息
+moon run --target native cmd/nbd -- info 127.0.0.1 10809
+
+# 从偏移 0 读取 512 字节到新文件
+moon run --target native cmd/nbd -- read 127.0.0.1 10809 0 512 sector.bin
+
+# 完整导出到新文件
+moon run --target native cmd/nbd -- export 127.0.0.1 10809 backup.raw
+
+# 根据对端分配信息稀疏导出
+moon run --target native cmd/nbd -- export-sparse 127.0.0.1 10809 sparse-backup.raw
+
+# 以只读方式导出本地镜像
+moon run --target native cmd/nbd -- serve demo.raw 11091
+```
+
+`info`、`read` 和两种导出命令可在末尾追加导出名称。`info` 通过 `NBD_OPT_INFO` 查询，不会进入数据传输阶段。服务端可用 `--name NAME` 设置导出名称，默认只读；只有显式指定 `--write` 才允许远端修改底层文件。
+
+稀疏导出要求对端支持 `base:allocation`。它只跳过服务端明确标记为 `ZERO` 的区段；单独标记为 `HOLE` 的区段仍会读取，以免错误地把未知数据变成零。稀疏导出目标同样必须是新文件，源镜像在导出过程中应保持不变。
+
+## MoonBit 库接口
+
+```moonbit nocheck
+let disk = @nbd.Client::connect("127.0.0.1", 10809, b"")
+let data = disk.read_at(0UL, 512)
+disk.disconnect()
+```
+
+客户端支持命名导出、导出列表、结构化读取、`base:allocation` 块状态、读写、刷盘、TRIM、写零、缓存提示和主动断开。单次读写最大为 16 MiB；操作默认超时 30 秒，可通过 `timeout_ms` 调整。服务端支持内存和本地普通文件后端。
+
+备份与校验相关接口包括：
+
+- `copy_to_file`：分块完整复制到空文件。
+- `copy_sparse_to_file`：根据对端明确报告为零的区段稀疏复制。
+- `copy_ranges_to_file`：将指定范围写入同尺寸的本地镜像，并在写入前检查全部范围。
+- `copy_differences_to_file`：比较两个稳定的远端镜像，并将差异范围复制到本地镜像。差异会扩展到合法块边界，复制范围可能大于实际变化范围。
+- `compare_ranges`：比较两个远端镜像并返回差异区间。
+- `create_integrity_manifest` 和 `verify_integrity_manifest`：生成及检查分块 CRC32 清单。CRC32 可检测意外损坏，但不提供防篡改保证。
+- `RangeSet`：校验、排序和合并范围，并提供并集、交集、差集操作。
+- `CachedClient`：为稳定的只读镜像提供容量受限的 LRU 读取缓存。缓存不会并发请求；通过该客户端执行写入、TRIM 和写零时，会清除重叠缓存行。
+- `ClientConfig::read_at_retry`：在稳定的只读导出发生传输故障时重连并重试读取，不会重试修改操作。
+
+增量复制要求调用方保证本地镜像确实对应比较所用的基线。操作中途发生 I/O 错误时，目标可能只完成部分更新；该接口不提供原子替换或自动基线验证。文件服务端也要求调用方确保底层文件不会被其他程序并发改写。内存后端的数据在进程退出后丢失。
+
+## 持续集成与本地联调
+
+GitHub Actions 会在推送、拉取请求和手动触发时运行以下流程：更新依赖、检查、构建、测试、格式检查，并运行 QEMU 互操作脚本。CI 工作流位于 `.github/workflows/ci.yml`，状态显示在本页顶部。
+
+在 Linux 或 WSL 安装 `qemu-utils` 后，可在本地逐项运行：
 
 ```sh
 bash scripts/qemu-interop.sh
@@ -33,45 +120,8 @@ bash scripts/qemu-large-offset-interop.sh
 bash scripts/qemu-sparse-export-interop.sh
 ```
 
-脚本仅操作新建临时文件，分别验证客户端连接 QEMU、QEMU 连接内存和文件服务端、普通及稀疏导出的逐字节比对，以及 4 GiB 以上偏移。测试使用本机端口 11089–11094；有占用时需先释放端口。服务端示例和客户端联调程序使用固定端口，切勿将它们指向重要数据。
+这些脚本验证客户端连接 QEMU、QEMU 连接内存与文件服务端、完整和稀疏导出的字节一致性，以及 4 GiB 以上偏移。脚本会创建临时镜像并使用本机端口 `11089` 至 `11094`；端口被占用时，请先释放相应端口。
 
-## 库接口
+## 许可证
 
-```moonbit nocheck
-let disk = @nbd.Client::connect("127.0.0.1", 11089, b"")
-let data = disk.read_at(0UL, 512)
-disk.disconnect()
-```
-
-调用方可设置 `structured=true, allocation=true`，使用 `block_status` 或 `scan_allocation` 查询分配信息；可用 `write_at`、`flush`、`trim`、`write_zeroes` 和无副作用的 `cache` 提示操作服务器支持的能力。单次读写上限为 16 MiB；`copy_to_file` 分块复制到空文件，失败可能留下不完整文件。
-
-`copy_sparse_to_file` 也只接受新建的空普通文件，并且要求连接时已启用 `allocation=true`。它会先把目标扩展到原始逻辑大小，仅跳过服务器明确标记为 `ZERO` 的区段；**只标记为 HOLE 的区段不会跳过**，避免把无法确认的内容错误地变为零。源端在导出过程中必须保持不变，失败后的目标文件同样不应当作完整备份使用。`compare_ranges` 比较两个稳定导出的字节并返回差异区间，超出设定范围数量会报错，不会返回伪装成完整的结果。
-
-对于重复扫描同一个稳定镜像的场景，可使用 `CachedClient::connect` 建立容量受限的 LRU 读取缓存。缓存不并发请求，写入、TRIM 和写零会先失效重叠缓存行；如果外部程序会修改导出内容，请关闭并重新建立缓存。
-
-`ClientConfig` 可保存连接参数，并通过 `read_at_retry` 在**稳定的只读导出**发生传输中断后重新建立连接并重试读取。它不会重试任何修改操作，也不应用于可能在重连期间变化的导出。
-
-`create_integrity_manifest` 可为稳定导出生成分块 CRC32 清单；`verify_integrity_manifest` 会重新读取并给出精确的不一致块。清单可用 `IntegrityManifest::encode` 保存、用 `decode` 恢复。CRC32 用于检测意外损坏，并不提供签名或抗篡改保证。
-
-`RangeSet` 提供经过排序、合并和对齐验证的半开区间集合，可进行并集、交集和差集。`Client::range_set` 会进一步检查区间是否落在当前导出内，适合为局部校验、复制和差分任务生成安全计划。
-
-`copy_ranges_to_file` 将选定区间更新到已有的同尺寸普通文件；开始写入前会校验整个计划。`copy_differences_to_file` 比较两个稳定导出，并将源端的差异区段复制到本地文件。字节级差异会向外扩展到源端的最小块边界，相邻范围会合并，因此更新字节数可能大于实际差异字节数。调用方必须保证本地文件与比较使用的 baseline 一致；这不是自动校验基线或事务式更新，I/O 中途失败仍可能留下部分更新。
-
-请求的 `timeout_ms` 覆盖发送、响应头及响应正文的整个过程。缓存默认行大小会适应容量预算，显式指定的行大小必须满足块对齐；连接断开后不能继续从缓存读取。只读重试涵盖连接建立与读取阶段，成功读取后的断开失败不会触发重复读取。
-
-## 命令行
-
-以下命令在仓库根目录执行：
-
-```sh
-moon run --target native cmd/nbd -- list 127.0.0.1 10809
-moon run --target native cmd/nbd -- info 127.0.0.1 10809
-moon run --target native cmd/nbd -- read 127.0.0.1 10809 0 512 sector.bin
-moon run --target native cmd/nbd -- export 127.0.0.1 10809 output.raw
-moon run --target native cmd/nbd -- export-sparse 127.0.0.1 10809 output.raw
-moon run --target native cmd/nbd -- serve disk.raw 11091
-```
-
-`info`、`read`、`export` 和 `export-sparse` 的末尾可追加导出名称。`info` 使用 `NBD_OPT_INFO`，不会进入传输阶段。`serve` 默认只读，可追加 `--name NAME`；只有明确追加 `--write` 才允许远端写入。`read` 和两种 `export` 使用独占创建，拒绝覆盖已存在的输出文件；导出失败可能留下部分文件。`export-sparse` 需要对端支持 `base:allocation`，并且只跳过服务端明确声明为 `ZERO` 的区段。客户端操作默认超时 30 秒，可用 `timeout_ms` 调整。
-
-协议参考 [NBD 官方规范](https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md)，QEMU 仅作为外部互操作测试工具。项目使用 Apache-2.0 许可证，网络实现依赖 `moonbitlang/async`。
+项目使用 Apache-2.0 许可证，网络实现依赖 `moonbitlang/async`。NBD 协议参考[官方规范](https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md)，QEMU 仅作为互操作测试工具。
