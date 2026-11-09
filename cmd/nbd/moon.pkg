@@ -1,0 +1,13 @@
+import {
+  "xlyyyyyy112/moon-nbd" @block,
+  "moonbitlang/async",
+  "moonbitlang/async/socket",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "moonbitlang/core/encoding/utf8",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "native"

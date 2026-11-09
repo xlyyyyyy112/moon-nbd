@@ -1,0 +1,130 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "xlyyyyyy112/moon-nbd"
+
+import {
+  "moonbitlang/async/fs",
+  "moonbitlang/async/socket",
+}
+
+// Values
+pub async fn compare_ranges(Client, Client, UInt64, UInt64, max_ranges? : Int32) -> Array[Difference]
+
+pub async fn inspect_export(String, Int32, Bytes, timeout_ms? : Int32) -> RemoteExportInfo
+
+pub async fn list_exports(String, Int32, timeout_ms? : Int32) -> Array[ExportEntry]
+
+// Errors
+pub suberror NbdError {
+  Protocol(String)
+  InvalidArgument(String)
+  Server(UInt32)
+  OutcomeUnknown(String)
+  LimitExceeded(String)
+}
+
+// Types and methods
+pub(all) struct AllocationExtent {
+  offset : UInt64
+  length : UInt32
+  flags : UInt32
+}
+pub fn AllocationExtent::is_hole(Self) -> Bool
+pub fn AllocationExtent::is_zero(Self) -> Bool
+
+pub(all) struct CacheStats {
+  hits : UInt64
+  misses : UInt64
+  evictions : UInt64
+  entries : Int32
+}
+
+pub struct CachedClient {
+  // private fields
+}
+pub fn CachedClient::close(Self) -> Unit
+pub async fn CachedClient::connect(String, Int32, Bytes, Int32, line_size? : Int32, structured? : Bool, timeout_ms? : Int32) -> Self
+pub async fn CachedClient::disconnect(Self) -> Unit
+pub async fn CachedClient::flush(Self) -> Unit
+pub fn CachedClient::line_size(Self) -> UInt32
+pub async fn CachedClient::read_at(Self, UInt64, Int32) -> Bytes
+pub fn CachedClient::size(Self) -> UInt64
+pub fn CachedClient::stats(Self) -> CacheStats
+pub async fn CachedClient::trim(Self, UInt64, Int32) -> Unit
+pub async fn CachedClient::write_at(Self, UInt64, Bytes) -> Unit
+pub async fn CachedClient::write_zeroes(Self, UInt64, Int32, no_hole? : Bool) -> Unit
+
+pub struct Client {
+  size : UInt64
+  flags : UInt32
+  min_block : UInt32
+  max_block : UInt32
+  structured : Bool
+  // private fields
+}
+pub async fn Client::block_status(Self, UInt64, Int32) -> Array[AllocationExtent]
+pub async fn Client::cache(Self, UInt64, Int32) -> Unit
+pub fn Client::close(Self) -> Unit
+pub async fn Client::connect(String, Int32, Bytes, structured? : Bool, allocation? : Bool, timeout_ms? : Int32) -> Self
+pub async fn Client::copy_sparse_to_file(Self, @fs.File, max_extents? : Int32) -> SparseCopyStats
+pub async fn Client::copy_to_file(Self, @fs.File) -> UInt64
+pub async fn Client::disconnect(Self) -> Unit
+pub async fn Client::flush(Self) -> Unit
+pub async fn Client::read_at(Self, UInt64, Int32) -> Bytes
+pub async fn Client::scan_allocation(Self, UInt64, UInt64, max_extents? : Int32) -> Array[AllocationExtent]
+pub async fn Client::trim(Self, UInt64, Int32) -> Unit
+pub async fn Client::write_at(Self, UInt64, Bytes) -> Unit
+pub async fn Client::write_zeroes(Self, UInt64, Int32, no_hole? : Bool) -> Unit
+
+pub(all) struct ClientConfig {
+  host : String
+  port : Int32
+  export_name : Bytes
+  structured : Bool
+  allocation : Bool
+  timeout_ms : Int32
+}
+pub async fn ClientConfig::connect(Self) -> Client
+pub fn ClientConfig::new(String, Int32, Bytes, structured? : Bool, allocation? : Bool, timeout_ms? : Int32) -> Self raise
+pub async fn ClientConfig::read_at_retry(Self, UInt64, Int32, retries? : Int32) -> Bytes
+
+pub(all) struct Difference {
+  offset : UInt64
+  length : UInt64
+}
+
+pub(all) struct ExportEntry {
+  name : Bytes
+  description : Bytes
+}
+
+pub struct FileExport {
+  // private fields
+}
+pub fn FileExport::close(Self) -> Unit
+pub async fn FileExport::open(String, read_only? : Bool, name? : Bytes) -> Self
+pub async fn FileExport::serve_connection(Self, @socket.Tcp) -> Unit
+pub fn FileExport::size(Self) -> UInt64
+
+pub struct MemoryExport {
+  // private fields
+}
+pub fn MemoryExport::new(Int32, read_only? : Bool, name? : Bytes) -> Self raise
+pub async fn MemoryExport::serve_connection(Self, @socket.Tcp) -> Unit
+pub fn MemoryExport::size(Self) -> UInt64
+pub fn MemoryExport::snapshot(Self) -> Bytes
+
+pub(all) struct RemoteExportInfo {
+  size : UInt64
+  flags : UInt32
+}
+
+pub(all) struct SparseCopyStats {
+  logical_bytes : UInt64
+  data_bytes : UInt64
+  zero_bytes : UInt64
+  extents : Int32
+}
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,27 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- '0.10.18+6c83a7f62'
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - run: moon update
+      - run: moon check --target native --deny-warn
+      - run: moon build --target native --deny-warn
+      - run: moon test --target native --deny-warn
+      - run: moon fmt --check
+      - name: Install QEMU tools
+        run: sudo apt-get update -qq && sudo apt-get install -y qemu-utils
+      - run: bash scripts/qemu-interop.sh
+      - run: bash scripts/qemu-server-interop.sh
+      - run: bash scripts/qemu-file-server-interop.sh
+      - run: bash scripts/qemu-export-interop.sh
+      - run: bash scripts/qemu-large-offset-interop.sh
+      - run: bash scripts/qemu-sparse-export-interop.sh
