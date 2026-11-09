@@ -1,7 +1,7 @@
 ///|
 fn usage() -> Unit {
   println(
-    "MoonNBD: list HOST PORT | info HOST PORT [NAME] | read HOST PORT OFFSET LENGTH OUTPUT [NAME] | export HOST PORT OUTPUT [NAME] | export-sparse HOST PORT OUTPUT [NAME] | serve FILE PORT [--write] [--name NAME]",
+    "MoonNBD: list HOST PORT | info HOST PORT [NAME] | allocation HOST PORT OFFSET LENGTH [NAME] | read HOST PORT OFFSET LENGTH OUTPUT [NAME] | export HOST PORT OUTPUT [NAME] | export-sparse HOST PORT OUTPUT [NAME] | serve FILE PORT [--write] [--name NAME]",
   )
   println("serve listens only on 127.0.0.1; --write enables changes to FILE")
 }
@@ -27,6 +27,32 @@ async fn run(args : Array[String]) -> Unit {
         name,
       )
       println("size=\{info.size} flags=\{info.flags}")
+    }
+    "allocation" if args.length() == 6 || args.length() == 7 => {
+      let port = @string.parse_int(args[3][:])
+      let offset = @string.parse_uint64(args[4][:])
+      let length = @string.parse_uint64(args[5][:])
+      let name = if args.length() == 7 { @utf8.encode(args[6]) } else { b"" }
+      let client = @block.Client::connect(
+        args[2],
+        port,
+        name,
+        structured=true,
+        allocation=true,
+      )
+      defer client.close()
+      let summary = client.allocation_summary(offset, length)
+      client.disconnect()
+      println("range_bytes=\{summary.range_bytes}")
+      println(
+        "hole_bytes=\{summary.hole_bytes} hole_extents=\{summary.hole_extents}",
+      )
+      println(
+        "zero_bytes=\{summary.zero_bytes} zero_extents=\{summary.zero_extents}",
+      )
+      println(
+        "other_status_bytes=\{summary.other_bytes} other_status_extents=\{summary.other_extents}",
+      )
     }
     "read" if args.length() == 7 || args.length() == 8 => {
       let port = @string.parse_int(args[3][:])

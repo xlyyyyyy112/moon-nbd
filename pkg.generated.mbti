@@ -33,6 +33,16 @@ pub(all) struct AllocationExtent {
 pub fn AllocationExtent::is_hole(Self) -> Bool
 pub fn AllocationExtent::is_zero(Self) -> Bool
 
+pub(all) struct AllocationSummary {
+  range_bytes : UInt64
+  hole_bytes : UInt64
+  zero_bytes : UInt64
+  other_bytes : UInt64
+  hole_extents : Int32
+  zero_extents : Int32
+  other_extents : Int32
+}
+
 pub(all) struct ByteRange {
   offset : UInt64
   length : UInt64
@@ -78,6 +88,7 @@ pub struct Client {
   structured : Bool
   // private fields
 }
+pub async fn Client::allocation_summary(Self, UInt64, UInt64, max_extents? : Int32) -> AllocationSummary
 pub async fn Client::block_status(Self, UInt64, Int32) -> Array[AllocationExtent]
 pub async fn Client::cache(Self, UInt64, Int32) -> Unit
 pub fn Client::close(Self) -> Unit

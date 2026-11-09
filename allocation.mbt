@@ -17,6 +17,69 @@ pub fn AllocationExtent::is_zero(self : AllocationExtent) -> Bool {
 }
 
 ///|
+/// Byte and extent counts returned by an allocation scan.
+///
+/// `hole_bytes` and `zero_bytes` are independent flags and can overlap.
+/// `other_bytes` has neither flag set; it describes only what the server
+/// reported and does not assert that the bytes contain nonzero data.
+pub(all) struct AllocationSummary {
+  range_bytes : UInt64
+  hole_bytes : UInt64
+  zero_bytes : UInt64
+  other_bytes : UInt64
+  hole_extents : Int32
+  zero_extents : Int32
+  other_extents : Int32
+}
+
+///|
+/// Scan allocation metadata and total bytes by the flags the server reported.
+///
+/// Servers may return a different number of extents for the same image, so the
+/// extent limit is explicit and bounded. The report is descriptive: it does
+/// not imply that a hole can be omitted from a byte-for-byte export.
+pub async fn Client::allocation_summary(
+  self : Client,
+  offset : UInt64,
+  length : UInt64,
+  max_extents~ : Int32 = 16384,
+) -> AllocationSummary {
+  let extents = self.scan_allocation(offset, length, max_extents~)
+  let mut hole_bytes = 0UL
+  let mut zero_bytes = 0UL
+  let mut other_bytes = 0UL
+  let mut hole_count = 0
+  let mut zero_count = 0
+  let mut other_count = 0
+  for extent in extents {
+    let size = extent.length.to_uint64()
+    let hole = extent.is_hole()
+    let zero = extent.is_zero()
+    if hole {
+      hole_bytes += size
+      hole_count += 1
+    }
+    if zero {
+      zero_bytes += size
+      zero_count += 1
+    }
+    if !hole && !zero {
+      other_bytes += size
+      other_count += 1
+    }
+  }
+  {
+    range_bytes: length,
+    hole_bytes,
+    zero_bytes,
+    other_bytes,
+    hole_extents: hole_count,
+    zero_extents: zero_count,
+    other_extents: other_count,
+  }
+}
+
+///|
 async fn negotiate_allocation(tcp : @socket.Tcp, name : Bytes) -> UInt32 {
   let body : Array[Byte] = []
   put32(body, name.length().reinterpret_as_uint())

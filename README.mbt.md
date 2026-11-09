@@ -64,6 +64,9 @@ moon run --target native cmd/nbd -- list 127.0.0.1 10809
 # 查询默认导出信息
 moon run --target native cmd/nbd -- info 127.0.0.1 10809
 
+# 查看整个镜像的分配状态（需要对端支持 base:allocation）
+moon run --target native cmd/nbd -- allocation 127.0.0.1 10809 0 16777216
+
 # 从偏移 0 读取 512 字节到新文件
 moon run --target native cmd/nbd -- read 127.0.0.1 10809 0 512 sector.bin
 
@@ -78,6 +81,8 @@ moon run --target native cmd/nbd -- serve demo.raw 11091
 ```
 
 `info`、`read` 和两种导出命令可在末尾追加导出名称。`info` 通过 `NBD_OPT_INFO` 查询，不会进入数据传输阶段。服务端可用 `--name NAME` 设置导出名称，默认只读；只有显式指定 `--write` 才允许远端修改底层文件。
+
+`allocation` 命令的参数依次为偏移和长度，输出服务端报告的空洞区段、明确为零的区段及其他状态的字节数和区段数。空洞与零标记可以重叠；“其他状态”只表示服务端没有返回这两种标记，不表示内容一定非零。可在长度后追加导出名称。
 
 稀疏导出要求对端支持 `base:allocation`。它只跳过服务端明确标记为 `ZERO` 的区段；单独标记为 `HOLE` 的区段仍会读取，以免错误地把未知数据变成零。稀疏导出目标同样必须是新文件，源镜像在导出过程中应保持不变。
 
@@ -98,6 +103,7 @@ disk.disconnect()
 - `copy_ranges_to_file`：将指定范围写入同尺寸的本地镜像，并在写入前检查全部范围。
 - `copy_differences_to_file`：比较两个稳定的远端镜像，并将差异范围复制到本地镜像。差异会扩展到合法块边界，复制范围可能大于实际变化范围。
 - `compare_ranges`：比较两个远端镜像并返回差异区间。
+- `allocation_summary`：汇总指定范围内服务端报告的空洞、已知零和其他状态。
 - `create_integrity_manifest` 和 `verify_integrity_manifest`：生成及检查分块 CRC32 清单。CRC32 可检测意外损坏，但不提供防篡改保证。
 - `RangeSet`：校验、排序和合并范围，并提供并集、交集、差集操作。
 - `CachedClient`：为稳定的只读镜像提供容量受限的 LRU 读取缓存。缓存不会并发请求；通过该客户端执行写入、TRIM 和写零时，会清除重叠缓存行。
