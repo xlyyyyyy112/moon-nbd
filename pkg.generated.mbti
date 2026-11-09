@@ -92,7 +92,11 @@ pub async fn Client::allocation_summary(Self, UInt64, UInt64, max_extents? : Int
 pub async fn Client::block_status(Self, UInt64, Int32) -> Array[AllocationExtent]
 pub async fn Client::cache(Self, UInt64, Int32) -> Unit
 pub fn Client::close(Self) -> Unit
+pub async fn Client::compare_file(Self, @fs.File, UInt64, UInt64, max_ranges? : Int32) -> FileCompareStats
 pub async fn Client::connect(String, Int32, Bytes, structured? : Bool, allocation? : Bool, timeout_ms? : Int32) -> Self
+pub async fn Client::copy_differences_from_file(Self, @fs.File, UInt64, UInt64, max_ranges? : Int32) -> UInt64
+pub async fn Client::copy_file_ranges(Self, @fs.File, RangeSet) -> UInt64
+pub async fn Client::copy_from_file(Self, @fs.File) -> UInt64
 pub async fn Client::copy_ranges_to_file(Self, @fs.File, RangeSet) -> RangeCopyStats
 pub async fn Client::copy_sparse_to_file(Self, @fs.File, max_extents? : Int32) -> SparseCopyStats
 pub async fn Client::copy_to_file(Self, @fs.File) -> UInt64
@@ -101,6 +105,7 @@ pub async fn Client::disconnect(Self) -> Unit
 pub async fn Client::flush(Self) -> Unit
 pub fn Client::range_set(Self, Array[ByteRange]) -> RangeSet raise
 pub async fn Client::read_at(Self, UInt64, Int32) -> Bytes
+pub async fn Client::read_bytes(Self, UInt64, Int32) -> Bytes
 pub async fn Client::scan_allocation(Self, UInt64, UInt64, max_extents? : Int32) -> Array[AllocationExtent]
 pub async fn Client::trim(Self, UInt64, Int32) -> Unit
 pub async fn Client::verify_integrity_manifest(Self, IntegrityManifest, max_mismatches? : Int32) -> Array[ChunkMismatch]
@@ -127,6 +132,11 @@ pub(all) struct Difference {
 pub(all) struct ExportEntry {
   name : Bytes
   description : Bytes
+}
+
+pub(all) struct FileCompareStats {
+  bytes_checked : UInt64
+  differences : Array[Difference]
 }
 
 pub struct FileExport {

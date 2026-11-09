@@ -1,7 +1,7 @@
 ///|
 fn usage() -> Unit {
   println(
-    "MoonNBD: list HOST PORT | info HOST PORT [NAME] | allocation HOST PORT OFFSET LENGTH [NAME] | read HOST PORT OFFSET LENGTH OUTPUT [NAME] | export HOST PORT OUTPUT [NAME] | export-sparse HOST PORT OUTPUT [NAME] | serve FILE PORT [--write] [--name NAME]",
+    "MoonNBD: list HOST PORT | info HOST PORT [NAME] | allocation HOST PORT OFFSET LENGTH [NAME] | read HOST PORT OFFSET LENGTH OUTPUT [NAME] | export HOST PORT OUTPUT [NAME] | export-sparse HOST PORT OUTPUT [NAME] | verify HOST PORT FILE [NAME] | import HOST PORT FILE [NAME] | serve FILE PORT [--write] [--name NAME]",
   )
   println("serve listens only on 127.0.0.1; --write enables changes to FILE")
 }
@@ -98,6 +98,43 @@ async fn run(args : Array[String]) -> Unit {
       println(
         "exported \{stats.logical_bytes} bytes (wrote \{stats.data_bytes}, skipped \{stats.zero_bytes} known-zero bytes)",
       )
+    }
+    "verify" if args.length() == 5 || args.length() == 6 => {
+      let name = if args.length() == 6 { @utf8.encode(args[5]) } else { b"" }
+      let file = @fs.open(args[4][:], mode=ReadOnly)
+      defer file.close()
+      let client = @block.Client::connect(
+        args[2],
+        @string.parse_int(args[3][:]),
+        name,
+      )
+      defer client.close()
+      let result = client.compare_file(file, 0UL, client.size)
+      client.disconnect()
+      println(
+        "bytes_checked=\{result.bytes_checked} differences=\{result.differences.length()}",
+      )
+      for difference in result.differences {
+        println("offset=\{difference.offset} length=\{difference.length}")
+      }
+      if result.differences.length() != 0 {
+        fail("image differs")
+      }
+      println("images match")
+    }
+    "import" if args.length() == 5 || args.length() == 6 => {
+      let name = if args.length() == 6 { @utf8.encode(args[5]) } else { b"" }
+      let file = @fs.open(args[4][:], mode=ReadOnly)
+      defer file.close()
+      let client = @block.Client::connect(
+        args[2],
+        @string.parse_int(args[3][:]),
+        name,
+      )
+      defer client.close()
+      let count = client.copy_from_file(file)
+      client.disconnect()
+      println("imported \{count} bytes")
     }
     "serve" if args.length() >= 4 => {
       let mut write = false

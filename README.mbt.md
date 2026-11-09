@@ -45,6 +45,21 @@ qemu-img compare demo.raw backup.raw
 
 `info` 显示镜像大小和能力。导出命令使用独占创建，不会覆盖已有的 `backup.raw`；导出过程中失败时可能留下不完整文件。比对命令成功退出表示两个镜像内容一致。完成后在终端一按 `Ctrl+C` 停止服务端。
 
+也可以把本地镜像导入到远端可写导出，或者校验本地镜像与远端是否一致：
+
+```sh
+# 终端一用 --write 启动服务端
+moon run --target native cmd/nbd -- serve demo.raw 11091 --write
+
+# 终端二导入一个与导出大小相同的本地镜像
+moon run --target native cmd/nbd -- import 127.0.0.1 11091 replacement.raw
+
+# 校验远端镜像和本地文件，数据不同会以失败状态退出
+moon run --target native cmd/nbd -- verify 127.0.0.1 11091 replacement.raw
+```
+
+导入会按块发送数据，并在服务端支持时执行 FLUSH。中途失败可能已有部分数据写入远端；执行前应确认服务端导出可写且目标数据允许被覆盖。
+
 若确实要允许客户端写入文件镜像，启动时必须明确加上 `--write`：
 
 ```sh
@@ -76,11 +91,17 @@ moon run --target native cmd/nbd -- export 127.0.0.1 10809 backup.raw
 # 根据对端分配信息稀疏导出
 moon run --target native cmd/nbd -- export-sparse 127.0.0.1 10809 sparse-backup.raw
 
+# 将同尺寸本地镜像导入可写远端
+moon run --target native cmd/nbd -- import 127.0.0.1 10809 image.raw
+
+# 比较本地镜像和远端导出
+moon run --target native cmd/nbd -- verify 127.0.0.1 10809 image.raw
+
 # 以只读方式导出本地镜像
 moon run --target native cmd/nbd -- serve demo.raw 11091
 ```
 
-`info`、`read` 和两种导出命令可在末尾追加导出名称。`info` 通过 `NBD_OPT_INFO` 查询，不会进入数据传输阶段。服务端可用 `--name NAME` 设置导出名称，默认只读；只有显式指定 `--write` 才允许远端修改底层文件。
+`info`、`read`、两种导出命令、`import` 和 `verify` 可在末尾追加导出名称。`info` 通过 `NBD_OPT_INFO` 查询，不会进入数据传输阶段。服务端可用 `--name NAME` 设置导出名称，默认只读；只有显式指定 `--write` 才允许远端修改底层文件。
 
 `allocation` 命令的参数依次为偏移和长度，输出服务端报告的空洞区段、明确为零的区段及其他状态的字节数和区段数。空洞与零标记可以重叠；“其他状态”只表示服务端没有返回这两种标记，不表示内容一定非零。可在长度后追加导出名称。
 
@@ -99,6 +120,10 @@ disk.disconnect()
 备份与校验相关接口包括：
 
 - `copy_to_file`：分块完整复制到空文件。
+- `copy_from_file`：把同尺寸本地镜像分块写入远端导出，并在支持时刷盘。
+- `read_bytes`：读取任意字节边界的小范围数据，自动按服务端最小块要求对齐请求。
+- `compare_file`：逐字节比较同尺寸本地镜像与远端指定范围，返回合并后的差异区间。
+- `copy_file_ranges` 和 `copy_differences_from_file`：将本地指定区间或差异区间写入远端，写前验证区间计划。
 - `copy_sparse_to_file`：根据对端明确报告为零的区段稀疏复制。
 - `copy_ranges_to_file`：将指定范围写入同尺寸的本地镜像，并在写入前检查全部范围。
 - `copy_differences_to_file`：比较两个稳定的远端镜像，并将差异范围复制到本地镜像。差异会扩展到合法块边界，复制范围可能大于实际变化范围。

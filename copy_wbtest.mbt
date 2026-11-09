@@ -171,6 +171,50 @@ test "byte differences are expanded and merged at source block alignment" {
 }
 
 ///|
+async test "file import and byte comparison round trip through a remote export" {
+  let dir = @fs.tmpdir(prefix="moon-nbd-file-transfer")
+  let path = "\{dir}/image.raw"
+  let file = @fs.open(path[:], mode=ReadWrite, create_mode=CreateNew)
+  let source = Array::make(1024, b'\x00')
+  for i in 0..<1024 {
+    source[i] = (i % 251).to_byte()
+  }
+  file.write_at(Bytes::from_array(source), position=0L)
+  let disk = MemoryExport::new(1024)
+  let listener = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+  defer listener.close()
+  @async.with_timeout(5000, () => {
+    @async.with_task_group() <| group => {
+      group.spawn_bg() <| () => {
+        let (tcp, _) = listener.accept()
+        defer tcp.close()
+        disk.serve_connection(tcp)
+      }
+      let client = Client::connect("127.0.0.1", listener.addr.port(), b"")
+      defer client.close()
+      assert_eq(client.read_bytes(5UL, 13), Bytes::from_array(source[5:18]))
+      assert_eq(client.read_bytes(1024UL, 0), b"")
+      assert_eq(client.copy_from_file(file), 1024UL)
+      let initial = client.compare_file(file, 0UL, 1024UL)
+      assert_eq(initial.bytes_checked, 1024UL)
+      assert_eq(initial.differences.length(), 0)
+
+      file.write_at(b"X", position=513L)
+      let changed = client.compare_file(file, 500UL, 24UL)
+      assert_eq(changed.differences.length(), 1)
+      assert_eq(changed.differences[0].offset, 513UL)
+      assert_eq(changed.differences[0].length, 1UL)
+      assert_eq(client.copy_differences_from_file(file, 500UL, 24UL), 1UL)
+      assert_eq(disk.snapshot(), Bytes::from_array(source))
+      client.disconnect()
+    }
+  })
+  file.close()
+  @fs.remove(path[:])
+  @fs.rmdir(dir[:])
+}
+
+///|
 async test "incremental copy handles a one-byte difference on a 512-byte client" {
   let dir = @fs.tmpdir(prefix="moon-nbd-difference-copy")
   let path = "\{dir}/baseline.raw"
