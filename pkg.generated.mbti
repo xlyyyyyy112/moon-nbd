@@ -53,6 +53,13 @@ pub async fn CachedClient::trim(Self, UInt64, Int32) -> Unit
 pub async fn CachedClient::write_at(Self, UInt64, Bytes) -> Unit
 pub async fn CachedClient::write_zeroes(Self, UInt64, Int32, no_hole? : Bool) -> Unit
 
+pub(all) struct ChunkMismatch {
+  offset : UInt64
+  length : UInt32
+  expected : UInt32
+  actual : UInt32
+}
+
 pub struct Client {
   size : UInt64
   flags : UInt32
@@ -67,11 +74,13 @@ pub fn Client::close(Self) -> Unit
 pub async fn Client::connect(String, Int32, Bytes, structured? : Bool, allocation? : Bool, timeout_ms? : Int32) -> Self
 pub async fn Client::copy_sparse_to_file(Self, @fs.File, max_extents? : Int32) -> SparseCopyStats
 pub async fn Client::copy_to_file(Self, @fs.File) -> UInt64
+pub async fn Client::create_integrity_manifest(Self, Int32, max_chunks? : Int32) -> IntegrityManifest
 pub async fn Client::disconnect(Self) -> Unit
 pub async fn Client::flush(Self) -> Unit
 pub async fn Client::read_at(Self, UInt64, Int32) -> Bytes
 pub async fn Client::scan_allocation(Self, UInt64, UInt64, max_extents? : Int32) -> Array[AllocationExtent]
 pub async fn Client::trim(Self, UInt64, Int32) -> Unit
+pub async fn Client::verify_integrity_manifest(Self, IntegrityManifest, max_mismatches? : Int32) -> Array[ChunkMismatch]
 pub async fn Client::write_at(Self, UInt64, Bytes) -> Unit
 pub async fn Client::write_zeroes(Self, UInt64, Int32, no_hole? : Bool) -> Unit
 
@@ -104,6 +113,14 @@ pub fn FileExport::close(Self) -> Unit
 pub async fn FileExport::open(String, read_only? : Bool, name? : Bytes) -> Self
 pub async fn FileExport::serve_connection(Self, @socket.Tcp) -> Unit
 pub fn FileExport::size(Self) -> UInt64
+
+pub(all) struct IntegrityManifest {
+  export_size : UInt64
+  chunk_size : UInt32
+  checksums : Array[UInt32]
+}
+pub fn IntegrityManifest::decode(Bytes) -> Self raise
+pub fn IntegrityManifest::encode(Self) -> Bytes raise
 
 pub struct MemoryExport {
   // private fields

@@ -51,6 +51,8 @@ disk.disconnect()
 
 `ClientConfig` 可保存连接参数，并通过 `read_at_retry` 在**稳定的只读导出**发生传输中断后重新建立连接并重试读取。它不会重试任何修改操作，也不应用于可能在重连期间变化的导出。
 
+`create_integrity_manifest` 可为稳定导出生成分块 CRC32 清单；`verify_integrity_manifest` 会重新读取并给出精确的不一致块。清单可用 `IntegrityManifest::encode` 保存、用 `decode` 恢复。CRC32 用于检测意外损坏，并不提供签名或抗篡改保证。
+
 ## 命令行
 
 以下命令在仓库根目录执行：
