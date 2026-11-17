@@ -19,7 +19,7 @@ MoonNBD 是用 MoonBit 编写的 Network Block Device（NBD）客户端与服务
 - 提供范围集合、LRU 只读缓存、读取重试、超时控制、CLI、测试和 QEMU 联调脚本。
 
 **预期验收产物与实施安排**
-- 交付 MoonBit 库、CLI、中文 README、示例、测试和 GitHub Actions；模块 `xlyyyyyy112/moon-nbd@0.1.0` 已发布至 Mooncakes。
+- 交付 MoonBit 库、CLI、中文 README、示例、测试和 GitHub Actions；模块 `xlyyyyyy112/moon-nbd@0.1.1` 已发布至 Mooncakes。
 - 持续维护协议处理、镜像传输及错误路径；当前最新 GitHub CI 已通过检查、构建、测试、格式检查和 6 项 QEMU 互操作脚本。
 - 客户端与服务端的协议能力、后端差异及暂不支持范围见仓库 `docs/功能矩阵.md`。
 
